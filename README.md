@@ -1,0 +1,180 @@
+# EV Sales Web 与移动 H5 自动化测试框架
+
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)](https://www.python.org/)
+[![pytest](https://img.shields.io/badge/pytest-8%2F9-0A9EDC)](https://pytest.org/)
+[![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33)](https://playwright.dev/python/)
+[![Suite Validation](https://github.com/Xdx-03/ev-sales-web/actions/workflows/suite-validation.yml/badge.svg)](https://github.com/Xdx-03/ev-sales-web/actions/workflows/suite-validation.yml)
+
+面向新能源汽车销售管理端 Web 与客户移动 H5 的 Python 黑盒 UI 自动化项目。框架使用 pytest + Playwright，按客户端和业务功能组织，强调场景可读性、页面定位集中维护、环境与凭据分离，以及经过用户名、密码和手机号脱敏的失败证据。
+
+## 当前覆盖
+
+| 客户端 | 代表性场景 | 数量 |
+| --- | --- | ---: |
+| 管理端 Web | 登录/退出、4 个受保护路由、车型/订单/售后导航 | 12 |
+| 移动 H5 | 展厅、登录校验、匿名权限、客户登录态、本人订单列表 | 16 |
+| 合计 | 可收集的真实浏览器 UI 场景 | 28 |
+
+移动 H5 的 8 个业务场景分别使用 Pixel 7 和 iPhone 13 浏览器设备参数执行，因此形成 16 个独立结果。iPhone 13 参数仅表示 Chromium 中的视口、触控和 User-Agent 仿真，不代表真实 iOS、Safari、原生 App 或 Appium 测试。
+
+项目不包含源码级单元测试、Mock 接口测试或框架白盒测试。Android/iOS Appium 和微信小程序自动化均暂未开始。
+
+## 当前验证状态
+
+| 检查项 | 状态 | 真实结果 |
+| --- | --- | --- |
+| Ruff、格式、Mypy、Python 编译 | 已通过 | 本地实际执行 |
+| pytest 场景收集 | 已通过 | 28 collected |
+| 管理端 Web 隔离回归 | 已通过 | 2026-08-22：同次完整回归中 12/12 通过 |
+| 移动 H5 隔离回归 | 已通过 | 2026-08-22：同次完整回归中 16/16 通过 |
+| Web + H5 完整回归 | 已通过 | 2026-08-22：28 passed、0 failed、0 skipped，45.64 秒 |
+| Jenkins 参数化流水线 | 代码已完成，暂未实跑 | 需在真实 Jenkins 配置凭据和执行节点后验证 |
+| Android/iOS Appium | 暂未开始 | 当前没有 APK/IPA、应用标识和设备环境 |
+
+完整回归运行 ID 为 `web-20260821T163540Z-2fc867d4`，使用本地 Docker 隔离环境和 Chromium 驱动 + 本机 Chrome 通道。`pytest --collect-only` 只代表场景可被发现，不代表浏览器回归通过；项目执行器会拒绝零用例或存在跳过场景的结果以成功状态退出。每条场景的前置条件、步骤、预期、代码映射和最近执行结果见 [测试用例清单](evidence/test-cases.csv)。
+
+## 架构
+
+```text
+tests（业务场景与断言）
+  |
+flows（跨页面业务流程）
+  |
+pages（按客户端和功能组织的 Page Object）
+  |
+Playwright（浏览器驱动、设备参数、条件等待）
+  |
+隔离的管理端 Web / 客户移动 H5 测试环境
+```
+
+- `tests/`：只描述业务场景、步骤和预期结果。
+- `ev_web/flows/`：复用登录等跨页面流程，避免测试复制操作细节。
+- `ev_web/pages/`：集中维护定位器和页面交互，按管理端和移动端功能拆分。
+- `ev_web/config.py`：统一加载环境地址、超时和测试账号，并执行启动校验。
+- `tests/conftest.py`：管理浏览器上下文、设备参数和失败证据。
+- `run_web_tests.py`：清理旧结果、透传 pytest 参数并保留真实退出码。
+- `Jenkinsfile`：参数化选择环境、测试范围和浏览器来源。
+- `artifacts/`、`allure-results/`、`reports/`：运行产物，全部排除在 Git 之外。
+- `evidence/`：可公开复核的测试用例清单，不包含账号、Token 或真实业务数据。
+
+## 本地运行
+
+要求 Python 3.11+。首次安装依赖和 Playwright Chromium：
+
+```bash
+python -m venv .venv
+python -m pip install -r requirements-dev.txt
+python -m playwright install chromium
+```
+
+复制空配置模板，真实环境信息只写入被 Git 忽略的本地文件：
+
+```bash
+cp config/env.example.yaml config/env.yaml
+```
+
+运行冒烟、H5 或完整 UI 场景：
+
+```bash
+python run_web_tests.py --config config/env.yaml --env default -m smoke --browser chromium
+python run_web_tests.py --config config/env.yaml --env default -m "mobile and h5" --browser chromium
+python run_web_tests.py --config config/env.yaml --env default -m "ui and live" --browser chromium
+```
+
+本地节点已有 Google Chrome 时可以显式使用其通道：
+
+```bash
+python run_web_tests.py --config config/env.yaml --env default -m h5 --browser chromium --browser-channel chrome
+```
+
+`--slowmo` 只用于人工调试，不进入 CI。测试代码禁止固定 `sleep`，等待由 Playwright 的定位器和断言完成。
+
+## 环境配置
+
+配置优先级为“环境变量 > 所选 YAML 环境”。默认读取 `config/env.yaml` 的 `default`；也可通过 `--config` 和 `--env` 选择其他配置文件及环境。
+
+| 环境变量 | 作用 |
+| --- | --- |
+| `EV_TEST_ENV` | 选择 YAML 环境，默认 `default` |
+| `EV_WEB_BASE_URL` | 管理端地址 |
+| `EV_H5_BASE_URL` | 客户移动 H5 地址 |
+| `EV_WEB_ADMIN_USERNAME` | 隔离环境管理员账号 |
+| `EV_WEB_ADMIN_PASSWORD` | 隔离环境管理员密码 |
+| `EV_H5_CUSTOMER_PHONE` | 隔离环境客户测试手机号 |
+| `EV_WEB_HEADLESS` | 是否无头运行 |
+| `EV_WEB_NAVIGATION_TIMEOUT_MS` | 页面导航超时 |
+| `EV_WEB_ACTION_TIMEOUT_MS` | 页面操作和断言超时 |
+
+非本地地址携带测试账号执行时强制要求 HTTPS。禁止连接生产环境，禁止使用个人账号或生产数据。
+
+## Jenkins 环境选择
+
+Jenkins 参数用于选择已经维护好的配置，不在构建页面重复输入真实地址和账号：
+
+| 参数 | 可选值 | 用途 |
+| --- | --- | --- |
+| `TEST_ENV` | `test` / `staging` | 选择隔离测试环境 |
+| `TEST_SUITE` | `smoke` / `critical` / `mobile-h5` / `all-ui` | 选择测试范围 |
+| `BROWSER_SOURCE` | `playwright-chromium` / `system-chrome` | 选择浏览器来源 |
+| `RUN_LIVE_TESTS` | `false` / `true` | 显式控制是否连接真实测试环境 |
+
+在 Jenkins Credentials 中分别创建 Secret File：
+
+- `ev-sales-web-test-config`
+- `ev-sales-web-staging-config`
+
+测试环境的 Secret File 使用 `test` 作为顶层键，预发布环境使用 `staging`。文件结构如下，尖括号内容由环境维护者填写：
+
+```yaml
+test:
+  web:
+    base_url: "<https-management-test-url>"
+    h5_base_url: "<https-h5-test-url>"
+    navigation_timeout_ms: 15000
+    action_timeout_ms: 8000
+    headless: true
+    viewport_width: 1440
+    viewport_height: 900
+  accounts:
+    admin:
+      username: "<dedicated-test-admin>"
+      password: "<rotatable-test-password>"
+    mobile_customer:
+      phone: "<synthetic-test-phone>"
+```
+
+地址、账号或密码变化时只更新对应 Jenkins Secret File，不修改测试代码。`RUN_LIVE_TESTS=false` 时流水线只做 Ruff、格式、Mypy、编译和 28 条场景收集；开启后才安装/选择浏览器并运行所选环境。所选套件缺少必需账号或出现任何跳过场景时构建失败，避免把静态检查或不完整执行误报成真实回归。
+
+## 测试标记
+
+| Marker | 含义 |
+| --- | --- |
+| `ui` | 浏览器 UI 黑盒场景 |
+| `live` | 需要已运行的完整测试环境 |
+| `smoke` | 快速高价值检查 |
+| `regression` | 较完整的功能回归 |
+| `critical` | 发布阻断级关键链路 |
+| `auth` | 登录认证 |
+| `permission` | 访问控制与路由守卫 |
+| `mobile` | 移动设备参数下的浏览器场景 |
+| `h5` | uni-app H5 场景 |
+
+## 失败证据与质量门禁
+
+失败时保存全页截图和页面 HTML，并附加到 Allure 结果。敏感输入在证据采集前清空；报告只允许使用隔离环境的虚构测试数据，并由受控 CI 保存，禁止提交公开仓库。
+
+- GitHub Actions `Suite Validation`：push/PR 执行 Ruff、格式、Mypy、编译和场景收集，不冒充真实回归。
+- GitHub Actions `Live UI Regression`：仅手动触发，通过 Secrets 注入隔离环境账号并执行真实 UI 场景。
+- Jenkins：通过 Secret File 管理多个环境，通过参数选择环境、套件和浏览器，默认不执行 Live 回归。
+
+| 质量属性 | 项目约束 | 自动检查 |
+| --- | --- | --- |
+| 可维护性 | 用例、Flow、Page Object、配置和运行器职责分离 | Ruff、Mypy、场景收集 |
+| 可读性 | 使用业务命名；单个测试表达一个可识别行为 | Ruff 命名与格式规则 |
+| 可扩展性 | 新客户端使用独立 fixture/Page Object；新模块按功能目录增加 | 分层目录、严格 Marker |
+| 灵活性 | 地址、凭据、浏览器和超时由 YAML、环境变量及命令行注入 | 配置启动校验 |
+| 简洁性 | 只抽取已经重复且稳定的行为；圈复杂度不超过 10 | Ruff C90、PLR |
+| 可复用性 | 跨页面流程进入 Flow；同类页面复用公共契约 | 代码审查、静态检查 |
+| 可测试性 | BrowserContext 隔离；禁止顺序依赖、固定等待和静默重试 | pytest 严格 Marker、CI |
+
+定位器只放在 Page Object；跨页面动作放在 Flow；测试保留业务结果断言；凭据不得进入源码。没有稳定复用需求时不新增抽象层，避免为“可扩展”制造复杂度。

@@ -1,0 +1,63 @@
+name: Live UI Regression
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: HTTPS address of the isolated admin Web environment
+        required: true
+        type: string
+      h5_base_url:
+        description: HTTPS address of the isolated customer H5 environment
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  chromium:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EV_WEB_BASE_URL: ${{ inputs.base_url }}
+      EV_H5_BASE_URL: ${{ inputs.h5_base_url }}
+      EV_WEB_ADMIN_USERNAME: ${{ secrets.EV_WEB_ADMIN_USERNAME }}
+      EV_WEB_ADMIN_PASSWORD: ${{ secrets.EV_WEB_ADMIN_PASSWORD }}
+      EV_H5_CUSTOMER_PHONE: ${{ secrets.EV_H5_CUSTOMER_PHONE }}
+      EV_WEB_HEADLESS: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Verify credentials
+        shell: bash
+        run: |
+          test -n "$EV_WEB_ADMIN_USERNAME"
+          test -n "$EV_WEB_ADMIN_PASSWORD"
+          test -n "$EV_H5_CUSTOMER_PHONE"
+
+      - name: Run live regression
+        run: python run_web_tests.py -m "ui and live" --browser chromium
+
+      - name: Upload failure evidence and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-ui-results-${{ github.run_id }}
+          path: |
+            allure-results/
+            reports/
+            artifacts/
+          if-no-files-found: warn
+          retention-days: 14
