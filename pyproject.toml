@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-src = ["ev_web", "tests"]
+src = ["ev_web", "tests", "framework_checks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "C90", "PLR", "SIM", "RUF"]
@@ -22,7 +22,7 @@ line-ending = "lf"
 
 [tool.mypy]
 python_version = "3.11"
-files = ["ev_web", "tests", "run_web_tests.py"]
+files = ["ev_web", "tests", "framework_checks", "run_web_tests.py"]
 check_untyped_defs = true
 disallow_untyped_defs = true
 no_implicit_optional = true

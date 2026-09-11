@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Generator
 from typing import Any
 
@@ -87,8 +88,10 @@ def ui_page(
     try:
         yield page
     finally:
-        _capture_failure_evidence(page, request, "admin")
-        context.close()
+        try:
+            _capture_failure_evidence(page, request, "admin")
+        finally:
+            context.close()
 
 
 @pytest.fixture(params=MOBILE_DEVICE_PROFILES)
@@ -112,8 +115,10 @@ def mobile_page(
     try:
         yield page
     finally:
-        _capture_failure_evidence(page, request, "mobile")
-        context.close()
+        try:
+            _capture_failure_evidence(page, request, "mobile")
+        finally:
+            context.close()
 
 
 @pytest.fixture
@@ -136,9 +141,13 @@ def _new_page(
 ) -> tuple[BrowserContext, Page]:
     """Create an isolated page with the project's timeout policy."""
     context = browser.new_context(**context_options)
-    context.set_default_timeout(settings.action_timeout_ms)
-    context.set_default_navigation_timeout(settings.navigation_timeout_ms)
-    return context, context.new_page()
+    try:
+        context.set_default_timeout(settings.action_timeout_ms)
+        context.set_default_navigation_timeout(settings.navigation_timeout_ms)
+        return context, context.new_page()
+    except BaseException:
+        context.close()
+        raise
 
 
 def _capture_failure_evidence(
@@ -152,13 +161,13 @@ def _capture_failure_evidence(
     )
     if not any(report and report.failed for report in reports):
         return
-    run_id = os.environ["EV_TEST_RUN_ID"]
-    evidence_dir = PROJECT_ROOT / "artifacts" / run_id
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = request.node.nodeid.replace("/", "_").replace("::", "__")
-    screenshot_path = evidence_dir / f"{client_name}-{safe_name}.png"
-    html_path = evidence_dir / f"{client_name}-{safe_name}.html"
     try:
+        run_id = os.environ["EV_TEST_RUN_ID"]
+        evidence_dir = PROJECT_ROOT / "artifacts" / run_id
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = request.node.nodeid.replace("/", "_").replace("::", "__")
+        screenshot_path = evidence_dir / f"{client_name}-{safe_name}.png"
+        html_path = evidence_dir / f"{client_name}-{safe_name}.html"
         _redact_sensitive_inputs(page)
         page.screenshot(path=str(screenshot_path), full_page=True)
         html_path.write_text(page.content(), encoding="utf-8")
@@ -172,8 +181,8 @@ def _capture_failure_evidence(
             name=f"{client_name} 失败页面源码",
             attachment_type=allure.attachment_type.HTML,
         )
-    except Exception as exc:  # Evidence capture must not hide the original failure.
-        allure.attach(str(exc), name=f"{client_name} 失败证据采集异常")
+    except Exception:  # Neither filesystem nor Allure errors may hide the test failure.
+        print(f"{client_name} failure evidence unavailable (details omitted).", file=sys.stderr)
 
 
 def _redact_sensitive_inputs(page: Page) -> None:

@@ -17,7 +17,7 @@
 
 移动 H5 的 8 个业务场景分别使用 Pixel 7 和 iPhone 13 浏览器设备参数执行，因此形成 16 个独立结果。iPhone 13 参数仅表示 Chromium 中的视口、触控和 User-Agent 仿真，不代表真实 iOS、Safari、原生 App 或 Appium 测试。
 
-项目不包含源码级单元测试、Mock 接口测试或框架白盒测试。Android/iOS Appium 和微信小程序自动化均暂未开始。
+项目不包含被测产品的源码级单元测试或 Mock 业务接口测试。独立的 `framework_checks/` 使用临时 pytest 套件和受控 BrowserContext 替身验证测试框架的清理与结果契约，单独统计。Android/iOS Appium 和微信小程序自动化均暂未开始。
 
 ## 当前验证状态
 
@@ -25,13 +25,33 @@
 | --- | --- | --- |
 | Ruff、格式、Mypy、Python 编译 | 已通过 | 本地实际执行 |
 | pytest 场景收集 | 已通过 | 28 collected |
+| 框架契约检查 | 本地已通过 | 2026-09-11：31 passed、0 failed、0 skipped；合成结果，不包含浏览器业务 |
 | 管理端 Web 隔离回归 | 已通过 | 2026-08-22：同次完整回归中 12/12 通过 |
 | 移动 H5 隔离回归 | 已通过 | 2026-08-22：同次完整回归中 16/16 通过 |
 | Web + H5 完整回归 | 已通过 | 2026-08-22：28 passed、0 failed、0 skipped，45.64 秒 |
 | Jenkins 参数化流水线 | 代码已完成，暂未实跑 | 需在真实 Jenkins 配置凭据和执行节点后验证 |
 | Android/iOS Appium | 暂未开始 | 当前没有 APK/IPA、应用标识和设备环境 |
 
-完整回归运行 ID 为 `web-20260821T163540Z-2fc867d4`，使用本地 Docker 隔离环境和 Chromium 驱动 + 本机 Chrome 通道。`pytest --collect-only` 只代表场景可被发现，不代表浏览器回归通过；项目执行器会拒绝零用例或存在跳过场景的结果以成功状态退出。每条场景的前置条件、步骤、预期、代码映射和最近执行结果见 [测试用例清单](evidence/test-cases.csv)。
+历史完整回归运行 ID 为 `web-20260821T163540Z-2fc867d4`，使用本地 Docker 隔离环境和 Chromium 驱动 + 本机 Chrome 通道。本轮框架改进未复跑真实浏览器业务；`pytest --collect-only` 只代表场景可被发现。执行器拒绝零用例、跳过、失败/错误以及缺失或损坏的 JUnit，并保留 pytest 非零退出码。每条业务场景的步骤、预期和历史执行结果见 [测试用例清单](evidence/test-cases.csv)。
+
+## 无需浏览器的可复现验证
+
+以下命令实际执行框架检查，不需要安装 Chromium、启动 Web/H5 服务或配置账号：
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest framework_checks -q --junitxml=reports/framework-checks.xml
+```
+
+| 可核验能力 | 检查方式 | 能证明的边界 |
+| --- | --- | --- |
+| 资源释放 | 真正的 pytest 进程使用受控 BrowserContext 替身 | 页面或超时初始化失败、采证失败后仍关闭管理端/H5上下文 |
+| 故障证据 | 合成目录错误、截图错误和 Allure 错误 | 采证故障不覆盖原测试失败，异常诊断不输出敏感原文 |
+| 清理与退出状态 | 临时目录中的合成 pytest 套件、受控链接属性 | 报告路径先验证再清理，报告参数由 runner 固定，异常结果不能误报成功 |
+
+默认 `pytest.ini` 继续收集 28 条业务场景；框架检查使用显式目录执行，JUnit 与真实 UI 回归分开。Actions 上传 `web-framework-checks-junit` 合成结果产物，框架检查成功不代表浏览器业务通过。
+
+上述本地框架检查使用 Windows / Python 3.11，包括真实 Windows junction 拒绝检查；Linux CI 将使用符号链接检查同一清理边界。线上执行状态以 Actions 为准。
 
 ## 架构
 
@@ -48,6 +68,7 @@ Playwright（浏览器驱动、设备参数、条件等待）
 ```
 
 - `tests/`：只描述业务场景、步骤和预期结果。
+- `framework_checks/`：框架契约与资源生命周期检查，不启动真实浏览器。
 - `ev_web/flows/`：复用登录等跨页面流程，避免测试复制操作细节。
 - `ev_web/pages/`：集中维护定位器和页面交互，按管理端和移动端功能拆分。
 - `ev_web/config.py`：统一加载环境地址、超时和测试账号，并执行启动校验。
@@ -163,7 +184,7 @@ test:
 
 失败时保存全页截图和页面 HTML，并附加到 Allure 结果。敏感输入在证据采集前清空；报告只允许使用隔离环境的虚构测试数据，并由受控 CI 保存，禁止提交公开仓库。
 
-- GitHub Actions `Suite Validation`：push/PR 执行 Ruff、格式、Mypy、编译和场景收集，不冒充真实回归。
+- GitHub Actions `Suite Validation`：push/PR 执行 Ruff、格式、Mypy、编译、合成框架检查和业务场景收集，上传独立框架 JUnit。
 - GitHub Actions `Live UI Regression`：仅手动触发，通过 Secrets 注入隔离环境账号并执行真实 UI 场景。
 - Jenkins：通过 Secret File 管理多个环境，通过参数选择环境、套件和浏览器，默认不执行 Live 回归。
 

@@ -40,7 +40,19 @@ jobs:
         run: mypy
 
       - name: Compile
-        run: python -m compileall -q ev_web tests scripts run_web_tests.py
+        run: python -m compileall -q ev_web tests framework_checks scripts run_web_tests.py
 
-      - name: Collect scenarios
+      - name: Collect business Web and H5 scenarios (no browser execution)
         run: python -m pytest --collect-only -q
+
+      - name: Execute framework contracts (synthetic data, no browser)
+        run: python -m pytest framework_checks -q --junitxml=reports/framework-checks.xml
+
+      - name: Upload synthetic framework check evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-framework-checks-junit
+          path: reports/framework-checks.xml
+          if-no-files-found: warn
+          retention-days: 14

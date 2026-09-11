@@ -7,6 +7,11 @@ and customer mobile H5 client. It does not contain application source or white-b
 unit tests. Review browser behavior, cross-client coverage, isolation, evidence,
 and framework maintainability within that boundary.
 
+`framework_checks/` separately tests this repository's runner and pytest resource
+lifecycle using synthetic suites and controlled browser-context substitutes. It
+does not test application internals or launch a real browser. Keep it separate
+from business counts and the default `testpaths = tests` selection.
+
 ## Required Static Checks
 
 Run these checks without claiming that they exercised a live application:
@@ -15,8 +20,9 @@ Run these checks without claiming that they exercised a live application:
 python -m ruff format --check .
 python -m ruff check .
 python -m mypy
-python -m compileall -q ev_web tests scripts run_web_tests.py
+python -m compileall -q ev_web tests framework_checks scripts run_web_tests.py
 python -m pytest --collect-only -q
+python -m pytest framework_checks -q --junitxml=reports/framework-checks.xml
 ```
 
 Live Chrome execution requires the documented isolated Web/H5 environment and
@@ -70,6 +76,7 @@ dedicated test accounts. Collection success is not a browser regression result.
 - “Passed” requires a recorded run against the isolated application. Otherwise use
   “not executed” or “collection validated”.
 - Do not request white-box/unit-test coverage for this repository. Recommend an
-  observable Web/H5 behavior or API-side test in the appropriate repository.
+  observable Web/H5 behavior or API-side test for the application instead.
+  Framework reliability regressions belong in `framework_checks/`.
 - Avoid style-only comments already enforced by Ruff and Mypy. Focus on P0/P1
   correctness, selector stability, false-green risk, isolation, and maintainability.
