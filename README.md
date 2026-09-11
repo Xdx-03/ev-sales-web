@@ -164,7 +164,7 @@ test:
       phone: "<synthetic-test-phone>"
 ```
 
-地址、账号或密码变化时只更新对应 Jenkins Secret File，不修改测试代码。`RUN_LIVE_TESTS=false` 时流水线只做 Ruff、格式、Mypy、编译和 28 条场景收集；开启后才安装/选择浏览器并运行所选环境。所选套件缺少必需账号或出现任何跳过场景时构建失败，避免把静态检查或不完整执行误报成真实回归。
+地址、账号或密码变化时只更新对应 Jenkins Secret File，不修改测试代码。`RUN_LIVE_TESTS=false` 时流水线执行 Ruff、格式、Mypy、编译、28 条业务场景收集和 31 项合成框架检查。框架检查无需业务凭据，不启动浏览器，在独立 `Framework checks` 阶段发布 `reports/framework-checks.xml`，不计为业务回归。每次检出后清理生成证据，只有本轮启动的 Live 阶段才能发布业务报告；开启后才安装/选择浏览器并运行所选环境。所选套件缺少必需账号或出现任何跳过场景时构建失败，避免把静态检查或不完整执行误报成真实回归。
 
 ## 测试标记
 

@@ -1,8 +1,11 @@
+def liveTestsStarted = false
+
 pipeline {
     agent any
 
     options {
         timestamps()
+        skipDefaultCheckout(true)
         disableConcurrentBuilds()
         timeout(time: 40, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
@@ -27,7 +30,7 @@ pipeline {
         booleanParam(
             name: 'RUN_LIVE_TESTS',
             defaultValue: false,
-            description: '显式开启真实 UI 回归；关闭时只做静态检查和场景收集'
+            description: '显式开启真实 UI 回归；关闭时执行静态检查、场景收集和合成框架检查'
         )
     }
 
@@ -40,6 +43,10 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+                // Clear only generated evidence before any stage can publish it.
+                dir('reports') { deleteDir() }
+                dir('allure-results') { deleteDir() }
+                dir('artifacts') { deleteDir() }
             }
         }
 
@@ -55,7 +62,9 @@ pipeline {
                         bat '''
                             @echo off
                             python -m venv .venv
+                            if errorlevel 1 exit /b %errorlevel%
                             .venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+                            if errorlevel 1 exit /b %errorlevel%
                         '''
                     }
                 }
@@ -70,19 +79,46 @@ pipeline {
                             .venv/bin/python -m ruff check .
                             .venv/bin/python -m ruff format --check .
                             .venv/bin/python -m mypy
-                            .venv/bin/python -m compileall -q ev_web tests run_web_tests.py
+                            .venv/bin/python -m compileall -q ev_web tests framework_checks scripts run_web_tests.py
                             .venv/bin/python -m pytest --collect-only -q
                         '''
                     } else {
                         bat '''
                             @echo off
                             .venv/Scripts/python.exe -m ruff check .
+                            if errorlevel 1 exit /b %errorlevel%
                             .venv/Scripts/python.exe -m ruff format --check .
+                            if errorlevel 1 exit /b %errorlevel%
                             .venv/Scripts/python.exe -m mypy
-                            .venv/Scripts/python.exe -m compileall -q ev_web tests run_web_tests.py
+                            if errorlevel 1 exit /b %errorlevel%
+                            .venv/Scripts/python.exe -m compileall -q ev_web tests framework_checks scripts run_web_tests.py
+                            if errorlevel 1 exit /b %errorlevel%
                             .venv/Scripts/python.exe -m pytest --collect-only -q
+                            if errorlevel 1 exit /b %errorlevel%
                         '''
                     }
+                }
+            }
+        }
+
+        stage('Framework checks') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh '.venv/bin/python -m pytest framework_checks -q --junitxml=reports/framework-checks.xml'
+                    } else {
+                        bat '@.venv/Scripts/python.exe -m pytest framework_checks -q --junitxml=reports/framework-checks.xml'
+                    }
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: false, testResults: 'reports/framework-checks.xml'
+                    archiveArtifacts(
+                        artifacts: 'reports/framework-checks.xml',
+                        allowEmptyArchive: false,
+                        fingerprint: false
+                    )
                 }
             }
         }
@@ -130,6 +166,7 @@ pipeline {
                         error('未知的环境或测试范围参数')
                     }
 
+                    liveTestsStarted = true
                     withCredentials([
                         file(credentialsId: credentialId, variable: 'EV_WEB_CONFIG_FILE')
                     ]) {
@@ -167,14 +204,19 @@ pipeline {
     post {
         always {
             script {
-                if (fileExists('reports/junit.xml')) {
-                    junit testResults: 'reports/junit.xml', keepLongStdio: true
+                // A skipped live stage must never publish a previous build's report.
+                if (liveTestsStarted) {
+                    if (fileExists('reports/junit.xml')) {
+                        junit allowEmptyResults: false, testResults: 'reports/junit.xml'
+                    } else {
+                        echo 'Live JUnit report was not generated; preserving the original stage status.'
+                    }
+                    archiveArtifacts(
+                        artifacts: 'allure-results/**,artifacts/**,reports/junit.xml',
+                        allowEmptyArchive: true,
+                        fingerprint: false
+                    )
                 }
-                archiveArtifacts(
-                    artifacts: 'allure-results/**,artifacts/**',
-                    allowEmptyArchive: true,
-                    fingerprint: false
-                )
             }
         }
     }
