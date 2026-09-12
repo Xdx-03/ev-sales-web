@@ -63,7 +63,7 @@ pipeline {
                             @echo off
                             python -m venv .venv
                             if errorlevel 1 exit /b %errorlevel%
-                            .venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+                            .venv\\Scripts\\python.exe -m pip install -r requirements-dev.txt
                             if errorlevel 1 exit /b %errorlevel%
                         '''
                     }
@@ -85,15 +85,15 @@ pipeline {
                     } else {
                         bat '''
                             @echo off
-                            .venv/Scripts/python.exe -m ruff check .
+                            .venv\\Scripts\\python.exe -m ruff check .
                             if errorlevel 1 exit /b %errorlevel%
-                            .venv/Scripts/python.exe -m ruff format --check .
+                            .venv\\Scripts\\python.exe -m ruff format --check .
                             if errorlevel 1 exit /b %errorlevel%
-                            .venv/Scripts/python.exe -m mypy
+                            .venv\\Scripts\\python.exe -m mypy
                             if errorlevel 1 exit /b %errorlevel%
-                            .venv/Scripts/python.exe -m compileall -q ev_web tests framework_checks scripts run_web_tests.py
+                            .venv\\Scripts\\python.exe -m compileall -q ev_web tests framework_checks scripts run_web_tests.py
                             if errorlevel 1 exit /b %errorlevel%
-                            .venv/Scripts/python.exe -m pytest --collect-only -q
+                            .venv\\Scripts\\python.exe -m pytest --collect-only -q
                             if errorlevel 1 exit /b %errorlevel%
                         '''
                     }
@@ -107,7 +107,7 @@ pipeline {
                     if (isUnix()) {
                         sh '.venv/bin/python -m pytest framework_checks -q --junitxml=reports/framework-checks.xml'
                     } else {
-                        bat '@.venv/Scripts/python.exe -m pytest framework_checks -q --junitxml=reports/framework-checks.xml'
+                        bat '@.venv\\Scripts\\python.exe -m pytest framework_checks -q --junitxml=reports/framework-checks.xml'
                     }
                 }
             }
@@ -134,7 +134,7 @@ pipeline {
                     if (isUnix()) {
                         sh '.venv/bin/python -m playwright install chromium'
                     } else {
-                        bat '@.venv/Scripts/python.exe -m playwright install chromium'
+                        bat '@.venv\\Scripts\\python.exe -m playwright install chromium'
                     }
                 }
             }
@@ -187,7 +187,7 @@ pipeline {
                                 label: "Run ${params.TEST_SUITE} on ${params.TEST_ENV}",
                                 script: """
                                     @echo off
-                                    .venv/Scripts/python.exe run_web_tests.py ^
+                                    .venv\\Scripts\\python.exe run_web_tests.py ^
                                       --config \"%EV_WEB_CONFIG_FILE%\" ^
                                       --env \"${params.TEST_ENV}\" ^
                                       -m \"${marker}\" ^
@@ -221,3 +221,4 @@ pipeline {
         }
     }
 }
+
